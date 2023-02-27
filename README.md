@@ -13,6 +13,8 @@ Find and replace all on all files (CMD+SHIFT+F):
 [![npm downloads][npm-downloads-src]][npm-downloads-href]
 [![License][license-src]][license-href]
 
+![README cover](https://user-images.githubusercontent.com/1497060/221598396-babd0b77-d549-468b-8a39-e8049f801d6a.png)
+
 ## Features
 
 <!-- Highlight some of the features your module provide here -->
