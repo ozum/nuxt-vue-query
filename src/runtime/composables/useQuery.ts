@@ -1,5 +1,5 @@
 import { unref, computed, ComputedRef, onServerPrefetch } from "vue";
-import { useLazyFetch } from "#imports";
+import { useFetch } from "#imports";
 import type { RouterMethod } from "h3";
 import { useQuery } from "@tanstack/vue-query";
 import type { UseQueryOptions, QueryMeta } from "@tanstack/vue-query";
@@ -25,7 +25,7 @@ type QueryKey<M extends RouterMethod, QKP extends any[], R extends Request<M>> =
 
 async function queryFn<M extends RouterMethod, R extends Request<M>>({ meta }: { meta: Meta<M, R> }): Promise<Response<R, M>>  {
   const { method, url, query, headers } = meta;
-  const { data, error } = await useLazyFetch<Response<R, M>>(unref(url), { query, method, headers });
+  const { data, error } = await useFetch<Response<R, M>>(unref(url), { query, method, headers });
   if (error.value) throw error.value;
   return data.value;
 }
