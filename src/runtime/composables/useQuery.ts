@@ -1,5 +1,5 @@
 import { unref, computed, ComputedRef, onServerPrefetch } from "vue";
-import { useFetch } from "#imports";
+import { useFetch, clearNuxtData } from "#imports";
 import type { RouterMethod } from "h3";
 import { useQuery } from "@tanstack/vue-query";
 import type { UseQueryOptions, QueryMeta } from "@tanstack/vue-query";
@@ -25,9 +25,14 @@ type QueryKey<M extends RouterMethod, QKP extends any[], R extends Request<M>> =
 
 async function queryFn<M extends RouterMethod, R extends Request<M>>({ meta }: { meta: Meta<M, R> }): Promise<Response<R, M>>  {
   const { method, url, query, headers } = meta;
-  const { data, error } = await useFetch<Response<R, M>>(unref(url), { query, method, headers });
+  const key = Math.random().toString();
+  const { data, error } = await useFetch<Response<R, M>>(unref(url), { key, query, method, headers });
   if (error.value) throw error.value;
-  return data.value;
+  const result = data.value as Response<R, M>;
+  // Clear this query from Nuxt cache, because TanStack Query has its own cache and there is no use for two caches.
+  // It would be better to completely by-pass the Nuxt cache, but there isn't a way as of this code is written.
+  if (process.client) clearNuxtData(key);
+  return result;
 }
 
 export function useApiGet<

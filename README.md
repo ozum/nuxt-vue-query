@@ -19,9 +19,11 @@ Find and replace all on all files (CMD+SHIFT+F):
 
 <!-- Highlight some of the features your module provide here -->
 - Adds all [Tanstack Vue Query](https://tanstack.com/query/v4/docs/vue/overview) composables: `useQuery`, `useMutation`, etc.
-- Add extra composables to easy access to Nuxt APIs.
+- Add extra composables `useApiGet`, `useApiPost`, `useApiPut` and `useApiDelete` to easy access to Nuxt APIs.
 - Generates and returns [Query Keys](https://tanstack.com/query/v4/docs/vue/guides/query-keys) automatically.
 - Type safety for Nuxt API `query`, `post`, `parameters` and `responses`.
+- Uses `useFetch()` under the hood to support SSR. (Why not `$fetch`? [See](https://github.com/nuxt/nuxt/discussions/18731))
+- Clears queries from Nuxt cache immediately, because TanStack Query provides its own cache.
 
 ## Quick Setup
 
@@ -59,7 +61,6 @@ mutate({ id: new Date(), title: 'Do Laundry' })
 Add type to server routes. For example `/api/item/[id]/[category]`
 
 ```ts
-// Zod is optional, but really useful.
 import type { H3Event } from "h3";
 
 // Export `Query` and `Body` types.
@@ -73,7 +74,7 @@ export default eventHandler(async (event: H3Event) => {
 
 ### Using with Zod
 
-Zod adds runtime data validation in addition to Type Script safety.
+Zod adds runtime data validation in addition to Type Script's type safety.
 
 ```ts
 // Zod is optional, but really useful.
@@ -84,7 +85,7 @@ const querySchema = z.object({ language: z.string().default("tr") });
 const bodySchema = z.object({ status: z.string().default("ok") });
 const parametersSchema = z.object({ id: z.preprocess(Number, z.number()), category: z.string() }).required({ id: true, name: true });
 
-// Export `Query` and `Body` types using Zod.
+// Export `Query`, `Body` and `Parameters` types using Zod.
 export type Query = z.infer<typeof querySchema>;
 export type Body = z.infer<typeof bodySchema>;
 export type Parameters = z.infer<typeof parametersSchema>;
