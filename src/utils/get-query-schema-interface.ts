@@ -1,53 +1,108 @@
-import { join, parse, extname, basename } from "node:path";
+import { join, parse, basename, relative, extname } from "node:path";
 import { genInterface } from "knitwork";
 import { RouterMethod } from "h3";
+import type { Nitro } from "nitropack";
 import readdirRecursive from "./readdir-recursive";
+import { WatchEvent } from "unstorage";
 
 export const typesModuleName = "nuxt-vue-query";
 
 type APIPath = string;
 type ImportStatement = string;
 type Method = RouterMethod | "default";
-type ResponseType = string
+type ResponseType = string;
 
 const HTTPMethods = ["get", "head", "patch", "post", "put", "delete", "connect", "options", "trace"];
-const urlParameterRegExp = /\[(.+?)\]/g;
+const bracketsRegExp = /\[(.+?)\]/g;
 
-function getApiDetails(path: string): { method: Method; apiPath: string; importPath: string, parameters?: string[] } {
-  const { dir, name } = parse(path);
-  const method = (HTTPMethods.find((method) => name.endsWith(`.${method.toLowerCase()}`)) ?? "default") as Method;
-  const methodlessName = basename(name, `.${method}`);
-  const methodlessPath = join(dir, methodlessName);
-  const apiPath = methodlessPath.replaceAll(urlParameterRegExp, ":$1");
-  const parameters = methodlessPath.match(urlParameterRegExp)?.map(param => param.substring(1, param.length - 1));
-  return { method, apiPath, importPath: `../../server${join(dir, name)}`, parameters };
+interface Route {
+  method: Method;
+  route: string;
+  handler: string;
 }
 
-export async function getRequestSchemaInterface(basePath: string): Promise<string> {
-  const files = (await readdirRecursive(join(basePath, "api"), { base: basePath }))
-    .concat(await readdirRecursive(join(basePath, "routes"), { base: basePath }))
+export type Event = "add" | "unlink";
+
+async function readHandlerFilePaths(serverDir: string): Promise<string[]> {
+  return (await readdirRecursive(join(serverDir, "api"), { base: serverDir }))
+    .concat(await readdirRecursive(join(serverDir, "routes"), { base: serverDir }))
     .filter((file) => extname(file) === ".ts");
+}
+
+function getRoute(serverDir: string, path: string): Route {
+  const { dir, name } = parse(path);
+  const method = HTTPMethods.find((method) => name.endsWith(`.${method.toLowerCase()}`)) as Method;
+  const handler = join(serverDir, path); // `/x/item.get` -> `/x/item`
+  const route = join(dir, basename(name, `.${method}`)).replaceAll(bracketsRegExp, ":$1");
+  return { method, route, handler };
+}
+
+export async function readRoutesFromFileSystem(serverDir: string): Promise<Route[]> {
+  return (await readHandlerFilePaths(serverDir)).map((path) => getRoute(serverDir, path));
+}
+
+export async function readRoutesFromNitro({
+  serverDir,
+  rootDir,
+  nitro,
+  event,
+  eventFilePath,
+}: {
+  serverDir: string;
+  rootDir: string;
+  nitro: Nitro;
+  event?: Event;
+  eventFilePath?: string;
+}): Promise<Route[]> {
+  const routes = [...nitro.scannedHandlers, ...nitro.options.handlers] as Route[];
+
+  if (event && eventFilePath) {
+    const fullPath = join(rootDir, eventFilePath);
+    if (event === "add") routes.push(getRoute(serverDir, join("/", relative(serverDir, fullPath))));
+    else if (event === "unlink") {
+      const unlinkedPathIndex = routes.findIndex((route) => route.handler === fullPath);
+      routes.splice(unlinkedPathIndex, 1);
+    }
+  }
+
+  return routes;
+}
+
+export function getRequestSchemaInterface(routes: Route[], buildDir: string): string {
   const querySchemas: Record<APIPath, Record<Method, ImportStatement>> = {};
   const bodySchemas: Record<APIPath, Record<Method, ImportStatement>> = {};
-  const parameterSchemas: Record<APIPath, { array: string, object: string }> = {};
-  const responseSchemas: Record<APIPath, Record<Method, ResponseType>> = {}
+  const parameterSchemas: Record<APIPath, { array: string; object: string }> = {};
+  const responseSchemas: Record<APIPath, Record<Method, ResponseType>> = {};
 
-  files.forEach((file) => {
-    const { method, apiPath, importPath, parameters } = getApiDetails(file);
+  routes
+    .filter(
+      (r) =>
+        typeof r.handler === "string" &&
+        (r.route?.startsWith("/api/") || r.route?.startsWith("/routes/")) &&
+        !r.route?.startsWith("/api/_") &&
+        !r.route?.startsWith("/routes/_")
+    )
+    .forEach((r) => {
+      const { method, route, handler } = r;
+      const relativePath = relative(join(buildDir, "types"), handler).replace(/\.[a-z]+$/, "");
+      const parameters = handler.match(bracketsRegExp)?.map((param) => param.substring(1, param.length - 1)); // "/project/server/api/[group]/[name]-xyz" -> ["group", "name"]
 
-    if (!querySchemas[apiPath]) querySchemas[apiPath] = {} as any;
-    querySchemas[apiPath][method] = `import('${importPath}').Query`;
+      if (!querySchemas[route]) querySchemas[route] = {} as any;
+      querySchemas[route][method ?? "default"] = `import('${relativePath}').Query`;
 
-    if (!bodySchemas[apiPath]) bodySchemas[apiPath] = {} as any;
-    bodySchemas[apiPath][method] = `import('${importPath}').Body`;
+      if (!bodySchemas[route]) bodySchemas[route] = {} as any;
+      bodySchemas[route][method ?? "default"] = `import('${relativePath}').Body`;
 
-    if (!responseSchemas[apiPath]) responseSchemas[apiPath] = {} as any;
-    responseSchemas[apiPath][method] = `Awaited<ReturnType<typeof import('${importPath}').default>>`;
+      if (!responseSchemas[route]) responseSchemas[route] = {} as any;
+      responseSchemas[route][method ?? "default"] = `Awaited<ReturnType<typeof import('${relativePath}').default>>`;
 
-    if (parameters && !parameterSchemas[apiPath]) {
-      parameterSchemas[apiPath] = { array: `[${ parameters.map(() => "MaybeRef<string | number>").join(", ") }]`, object: `{ ${ parameters.map(p => `${p}: MaybeRef<string | number>`).join(",\n") } }` };
-    }
-  });
+      if (parameters && !parameterSchemas[route]) {
+        parameterSchemas[route] = {
+          array: `[${parameters.map(() => "MaybeRef<string | number>").join(", ")}]`,
+          object: `{ ${parameters.map((p) => `${p}: MaybeRef<string | number>`).join(",\n")} }`,
+        };
+      }
+    });
 
   return `
   declare module "${typesModuleName}" {
