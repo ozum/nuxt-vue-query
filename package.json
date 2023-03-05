@@ -1,6 +1,6 @@
 {
   "name": "nuxt-vue-query",
-  "version": "0.0.8",
+  "version": "0.0.9",
   "description": "Add type safe TanStack Vue Query to your Nuxt project.",
   "keywords": [
     "vue",
