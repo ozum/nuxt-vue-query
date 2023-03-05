@@ -41,13 +41,13 @@
     "test": "vitest run",
     "test:watch": "vitest watch"
   },
-  "peerDependencies": {
-    "@tanstack/vue-query": "^4.24.10"
-  },
   "dependencies": {
     "@nuxt/kit": "^3.2.3",
+    "@tanstack/vue-query": "^4.26.0",
+    "@types/lodash.debounce": "^4.0.7",
     "defu": "^6.1.2",
-    "knitwork": "^1.0.0"
+    "knitwork": "^1.0.0",
+    "lodash.debounce": "^4.0.8"
   },
   "devDependencies": {
     "@nuxt/eslint-config": "^0.1.1",

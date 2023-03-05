@@ -27,10 +27,11 @@ Find and replace all on all files (CMD+SHIFT+F):
 
 ## Quick Setup
 
-1. Add `nuxt-vue-query` dependency to your project
+1. Add `nuxt-vue-query` and `@tanstack/vue-query`  dependency to your project
 
 ```bash
 npm install --save-dev nuxt-vue-query
+npm install @tanstack/vue-query
 ```
 
 2. Add `nuxt-vue-query` to the `modules` section of `nuxt.config.ts`. Provide `vue-query` configuration.

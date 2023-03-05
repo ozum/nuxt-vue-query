@@ -3,8 +3,12 @@ import { defineNuxtModule, addPlugin, createResolver, addTemplate, addImports } 
 import { QueryClient } from "@tanstack/vue-query";
 import { defu } from "defu";
 import type { Nitro } from "nitropack";
-import { join, relative } from "node:path";
-import { getRequestSchemaInterface, typesModuleName, readRoutesFromFileSystem, readRoutesFromNitro } from "./utils/get-query-schema-interface";
+import { join } from "node:path";
+import { addRemoveRoute, getSchemaInterface, readRoutesFromFileSystem, readRoutesFromNitro } from "./utils/get-query-schema-interface";
+import debounce from "lodash.debounce";
+
+// TODO: Use builtin response type of Internal API.
+
 export interface ModuleOptions {
   /** Configuration to be passed to "@tanstack/vue-query" */
   queryClientConfig?: ConstructorParameters<typeof QueryClient>[0];
@@ -22,34 +26,33 @@ export default defineNuxtModule<ModuleOptions>({
     nuxt.options.runtimeConfig.public.vueQuery = defu(nuxt.options.runtimeConfig.public.vueQuery, options);
     let nitro: Nitro;
 
-    // Capture Nitro server.
-    nuxt.hook("nitro:init", (n) => {
-      nitro = n;
-    });
-
-
-    nuxt.hook("builder:watch", async (event, path) => {
+    async function rebuildTypesOnChange(event: any, path: any) {
       const isAddRemoveEvent = event === "add" || event === "unlink";
       const isRouteFile = path.startsWith("server/api") || path.startsWith("server/routes");
 
       if (isAddRemoveEvent && isRouteFile) {
-        const routes = await readRoutesFromNitro({ ...nuxt.options, nitro, event: event as any, eventFilePath: path })
-        const content = getRequestSchemaInterface(routes, nuxt.options.buildDir);
-        await writeFile(join(nuxt.options.buildDir, `types/${typesModuleName}.d.ts`), content);
+        const routes = addRemoveRoute({ routes: readRoutesFromNitro(nitro), nuxt, path, event: event as any });
+        const content = getSchemaInterface(routes, nuxt.options.buildDir);
+        await writeFile(join(nuxt.options.buildDir, "types/nuxt-vue-query.d.ts"), content);
       }
-    });
+    }
 
-    nuxt.hook("app:resolve", async (nuxtApp) => {
+    async function buildTypes() {
       const routes = await readRoutesFromFileSystem(nuxt.options.serverDir);
       addTemplate({
-        filename: `types/${typesModuleName}.d.ts`,
-        getContents: () => getRequestSchemaInterface(routes, nuxt.options.buildDir),
+        filename: "types/nuxt-vue-query.d.ts",
+        getContents: () => getSchemaInterface(routes, nuxt.options.buildDir),
       });
-    });
+    }
 
-    // Include added types to the `./nuxt/nuxt.d.ts
+    nuxt.hook("app:resolve", buildTypes);
+    nuxt.hook("nitro:init", (n) => {
+      nitro = n;
+    });
+    nuxt.hook("builder:watch", debounce(rebuildTypesOnChange, 200)); // Rename fires two events, don't execute more  than necessary.
     nuxt.hook("prepare:types", ({ references }) => {
-      references.push({ path: `types/${typesModuleName}.d.ts` });
+      // Include added types to the `./nuxt/nuxt.d.ts
+      references.push({ path: "types/nuxt-vue-query.d.ts" });
     });
 
     // Export all of Vue Query composables in addition to this module's composables.

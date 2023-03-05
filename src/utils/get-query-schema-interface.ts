@@ -3,9 +3,7 @@ import { genInterface } from "knitwork";
 import { RouterMethod } from "h3";
 import type { Nitro } from "nitropack";
 import readdirRecursive from "./readdir-recursive";
-import { WatchEvent } from "unstorage";
-
-export const typesModuleName = "nuxt-vue-query";
+import { Nuxt } from "@nuxt/schema";
 
 type APIPath = string;
 type ImportStatement = string;
@@ -15,49 +13,93 @@ type ResponseType = string;
 const HTTPMethods = ["get", "head", "patch", "post", "put", "delete", "connect", "options", "trace"];
 const bracketsRegExp = /\[(.+?)\]/g;
 
+/** Route interface similar to Nitro.js' interface returned from `nitro.scannedHandlers` and `nitro.options.handler`. */
 interface Route {
   method: Method;
   route: string;
   handler: string;
 }
 
-export type Event = "add" | "unlink";
+/** Event type emitted by Nitro.js when a new file is added or removed. */
+type Event = "add" | "unlink";
 
+/**
+ * Scans `api` and `routes` directories from given Nuxt server path recursively to retrieve server api handler files.
+ *
+ * @param serverDir is the full path to the Nuxt server directory.
+ * @returns all files in `api` and `routes` relative to server path.
+ *
+ * @example
+ * const files = readHandlerFilePaths('/project/server'); // [`/api/item.get.ts', 'routes/option.post.ts']
+ */
 async function readHandlerFilePaths(serverDir: string): Promise<string[]> {
   return (await readdirRecursive(join(serverDir, "api"), { base: serverDir }))
     .concat(await readdirRecursive(join(serverDir, "routes"), { base: serverDir }))
     .filter((file) => extname(file) === ".ts");
 }
 
+/**
+ * Returns route details for the given path.
+ *
+ * @param serverDir is the full path to the Nuxt server directory.
+ * @param path is the path of the file to get route details for. The path should be relative to the server path.
+ * @returns route details for the given file.
+ *
+ * @example
+ * const route = getRoute("/project/server", "api/item.get.ts"); // { method: "get", route: "/api/item", handler: "/project/server/api/item.get.ts" }
+ */
 function getRoute(serverDir: string, path: string): Route {
   const { dir, name } = parse(path);
   const method = HTTPMethods.find((method) => name.endsWith(`.${method.toLowerCase()}`)) as Method;
-  const handler = join(serverDir, path); // `/x/item.get` -> `/x/item`
+  const handler = join(serverDir, path);
   const route = join(dir, basename(name, `.${method}`)).replaceAll(bracketsRegExp, ":$1");
   return { method, route, handler };
 }
 
+/**
+ * Scans `api` and `routes` directories from given Nuxt server path recursively to create routes.
+ *
+ * @param serverDir is the full path to the Nuxt server directory.
+ * @returns all routes for the Nuxt server.
+ *
+ * @example
+ * const routes = readRoutesFromFileSystem("/project/server"); // [{ method: "get", route: "/api/item", handler: "/project/server/api/item.get.ts" }, {...}]
+ */
 export async function readRoutesFromFileSystem(serverDir: string): Promise<Route[]> {
   return (await readHandlerFilePaths(serverDir)).map((path) => getRoute(serverDir, path));
 }
 
-export async function readRoutesFromNitro({
-  serverDir,
-  rootDir,
-  nitro,
-  event,
-  eventFilePath,
-}: {
-  serverDir: string;
-  rootDir: string;
-  nitro: Nitro;
-  event?: Event;
-  eventFilePath?: string;
-}): Promise<Route[]> {
-  const routes = [...nitro.scannedHandlers, ...nitro.options.handlers] as Route[];
+/**
+ * Gets all routes from Nitor.js. This is faster than scanning files, because Nitro.js already scanned the files previously.
+ * However, currently, this is not available during Nuxt server start. We use it for the `builder:watch` events when a new
+ * file is added or removed for faster response.
+ *
+ * @param nitro is the Nitro.js instance
+ * @returns all routes for the Nuxt server.
+ *
+ * @example
+ * const routes = readRoutesFromNitro(nitro); // [{ method: "get", route: "/api/item", handler: "/project/server/api/item.get.ts" }, {...}]
+ */
+export function readRoutesFromNitro(nitro: Nitro): Route[] {
+  return [...nitro.scannedHandlers, ...nitro.options.handlers] as Route[];
+}
 
-  if (event && eventFilePath) {
-    const fullPath = join(rootDir, eventFilePath);
+/**
+ * Adds to or removes from routes the route related to the given handler file path.
+ *
+ * @param routes are the list of Nuxt server routes.
+ * @param nuxt is the nuxt object.
+ * @param event is the event name.
+ * @param path is the path of the file relative to project root. This is the path provided by `builder:watch` event.
+ * @returns routes with the related route added or removed from.
+ *
+ * @example
+ * const routes = addRemoveRoute({ routes, nuxt, path, event }); // [{ method: "get", route: "/api/item", handler: "/project/server/api/item.get.ts" }, {...}]
+ */
+export function addRemoveRoute({ routes, nuxt, event, path }: { routes: Route[]; nuxt: Nuxt; event?: Event; path?: string }): Route[] {
+  const { rootDir, serverDir } = nuxt.options;
+  if (event && path) {
+    const fullPath = join(rootDir, path);
     if (event === "add") routes.push(getRoute(serverDir, join("/", relative(serverDir, fullPath))));
     else if (event === "unlink") {
       const unlinkedPathIndex = routes.findIndex((route) => route.handler === fullPath);
@@ -68,11 +110,17 @@ export async function readRoutesFromNitro({
   return routes;
 }
 
-export function getRequestSchemaInterface(routes: Route[], buildDir: string): string {
+/**
+ * Returns TypeScript interface as a string for all Nuxt server routes.
+ *
+ * @param routes are the list of Nuxt server routes.
+ * @param buildDir is the path of the build directory of Nuxt project, usually `/.nuxt`.
+ * @returns TypeScript interface.
+ */
+export function getSchemaInterface(routes: Route[], buildDir: string): string {
   const querySchemas: Record<APIPath, Record<Method, ImportStatement>> = {};
   const bodySchemas: Record<APIPath, Record<Method, ImportStatement>> = {};
   const parameterSchemas: Record<APIPath, { array: string; object: string }> = {};
-  const responseSchemas: Record<APIPath, Record<Method, ResponseType>> = {};
 
   routes
     .filter(
@@ -93,9 +141,6 @@ export function getRequestSchemaInterface(routes: Route[], buildDir: string): st
       if (!bodySchemas[route]) bodySchemas[route] = {} as any;
       bodySchemas[route][method ?? "default"] = `import('${relativePath}').Body`;
 
-      if (!responseSchemas[route]) responseSchemas[route] = {} as any;
-      responseSchemas[route][method ?? "default"] = `Awaited<ReturnType<typeof import('${relativePath}').default>>`;
-
       if (parameters && !parameterSchemas[route]) {
         parameterSchemas[route] = {
           array: `[${parameters.map(() => "MaybeRef<string | number>").join(", ")}]`,
@@ -105,10 +150,9 @@ export function getRequestSchemaInterface(routes: Route[], buildDir: string): st
     });
 
   return `
-  declare module "${typesModuleName}" {
+  declare module "nuxt-vue-query" {
     ${genInterface("InternalApiQuery", querySchemas)}
     ${genInterface("InternalApiBody", bodySchemas)}
-    ${genInterface("InternalApiResponse", responseSchemas)}
     ${genInterface("InternalApiParameters", parameterSchemas)}
   }
   `;

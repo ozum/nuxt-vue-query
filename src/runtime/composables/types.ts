@@ -1,7 +1,8 @@
 import { EmptyObject, ConditionalExcept } from "type-fest";
 import type { RouterMethod } from "h3";
 import { MaybeRefDeep } from "@tanstack/vue-query/build/lib/types";
-import type { InternalApiQuery, InternalApiBody, InternalApiParameters, InternalApiResponse } from "nuxt-vue-query";
+import type { InternalApiQuery, InternalApiBody, InternalApiParameters } from "nuxt-vue-query";
+import type { InternalApi } from "nitropack";
 
 // ─── Utility Methods ─────────────────────────────────────────────────────────
 export type Maybe<T> = T | undefined;
@@ -11,13 +12,14 @@ type TypeofKey2<T, R> = R extends keyof T ? T[R] : never;
 type TypeofKey3<T, R, M> = M extends keyof TypeofKey2<T, R> ? TypeofKey2<T, R>[M] : never;
 
 // ─── Core Types ──────────────────────────────────────────────────────────────
-type SchemaWithMethod<T, M> = ConditionalExcept<{ [URL in keyof T as URL extends (`_${string}` | `/api/_${string}`) ? never : URL]: { [Method in keyof T[URL] as Method extends M ? Method : never]: T[URL][Method] } }, EmptyObject>;
-type Schema<T, M extends RouterMethod> = SchemaWithMethod<T, M>;
+// type SchemaWithMethod<T, M> = ConditionalExcept<{ [URL in keyof T as URL extends (`_${string}` | `/api/_${string}`) ? never : URL]: { [Method in keyof T[URL] as Method extends M ? Method : never]: T[URL][Method] } }, EmptyObject>;
+// type Schema<T, M extends RouterMethod> = SchemaWithMethod<T, M>;
+type SchemaWithMethod<T, M extends RouterMethod> = ConditionalExcept<{ [URL in keyof T as URL extends (`_${string}` | `/api/_${string}`) ? never : URL]: { [Method in keyof T[URL] as Method extends M ? Method : never]: T[URL][Method] } }, EmptyObject>;
 
-export type Request<M extends RouterMethod, T = InternalApiQuery> = keyof Schema<T, M>;
+export type Request<M extends RouterMethod, T = InternalApiQuery> = keyof SchemaWithMethod<T, M>;
 export type Query<R, M extends RouterMethod> = MaybeRefDeep<TypeofKey3<InternalApiQuery, R, M>>;
 export type Body<R, M extends RouterMethod> = MaybeRefDeep<TypeofKey3<InternalApiBody, R, M>>;
-export type Response<R, M extends RouterMethod> = TypeofKey3<InternalApiResponse, R, M>;
+export type Response<R, M extends RouterMethod> = TypeofKey3<InternalApi, R, M>;
 
 type URLObjectParameters<R> = TypeofKey2<InternalApiParameters, R>["object"];
 type URLArrayParameters<R> = TypeofKey2<InternalApiParameters, R>["array"];
