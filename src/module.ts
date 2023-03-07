@@ -7,8 +7,6 @@ import { join } from "node:path";
 import { addRemoveRoute, getSchemaInterface, readRoutesFromFileSystem, readRoutesFromNitro } from "./utils/get-query-schema-interface";
 import debounce from "lodash.debounce";
 
-// TODO: Use builtin response type of Internal API.
-
 export interface ModuleOptions {
   /** Configuration to be passed to "@tanstack/vue-query" */
   queryClientConfig?: ConstructorParameters<typeof QueryClient>[0];
