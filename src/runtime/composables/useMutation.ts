@@ -1,6 +1,6 @@
 import type { RouterMethod } from "h3";
 import { useMutation } from "@tanstack/vue-query";
-import { VueMutationObserverOptions } from "@tanstack/vue-query/build/lib/useMutation";
+import type { VueMutationObserverOptions } from "@tanstack/vue-query/build/lib/useMutation";
 import getUrl from "../utils/get-url";
 import type { Response, URLParamsWithBody, Request, URLWithParams, Body } from "./types";
 

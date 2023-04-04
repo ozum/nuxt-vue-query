@@ -1,6 +1,6 @@
 import { writeFile } from "node:fs/promises";
 import { defineNuxtModule, addPlugin, createResolver, addTemplate, addImports } from "@nuxt/kit";
-import { QueryClient } from "@tanstack/vue-query";
+import type { QueryClient } from "@tanstack/vue-query";
 import { defu } from "defu";
 import type { Nitro } from "nitropack";
 import { join } from "node:path";

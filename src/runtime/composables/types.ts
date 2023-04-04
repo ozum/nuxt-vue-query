@@ -1,6 +1,6 @@
-import { EmptyObject, ConditionalExcept } from "type-fest";
+import type { EmptyObject, ConditionalExcept } from "type-fest";
 import type { RouterMethod } from "h3";
-import { MaybeRefDeep } from "@tanstack/vue-query/build/lib/types";
+import type { MaybeRefDeep } from "@tanstack/vue-query/build/lib/types";
 import type { InternalApiQuery, InternalApiBody, InternalApiParameters } from "nuxt-vue-query";
 import type { InternalApi } from "nitropack";
 
